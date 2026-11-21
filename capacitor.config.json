@@ -1,0 +1,6 @@
+{
+  "appId": "com.escaner.texto",
+  "appName": "Escáner de texto",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}
