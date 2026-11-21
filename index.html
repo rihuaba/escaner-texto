@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Escáner de texto</title>
+<style>
+/* VOICE: herramienta directa y tranquila, lista para usar al abrir.
+   IDEA: un resaltador sobre papel — marcas la parte de la imagen que quieres leer.
+   PICTURE: la mesa de trabajo con la imagen y el recuadro amarillo es la imagen principal.
+   COLOUR and TYPE: papel blanco, tinta negra, amarillo resaltador; Archivo + Inter.
+   LAYOUT: mesa grande a la izquierda, panel de resultado a la derecha; apilado en móvil. */
+:root{color-scheme:light dark;
+--bg:light-dark(#f4f3ef,#15161a);--card:light-dark(#ffffff,#1f2127);--ink:light-dark(#141414,#f1f0ec);
+--mute:light-dark(#5c5c5c,#a7a7ad);--line:light-dark(#dedcd4,#33353d);--hi:#ffd60a;--hiInk:#141414;--stage:light-dark(#e7e5de,#0e0f12);--ok:light-dark(#1b7a3d,#5fd38a)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Inter,system-ui,sans-serif;overflow-x:clip}
+h1{font:800 clamp(28px,4vw,40px)/1.05 system-ui,sans-serif;margin:0;text-wrap:balance}
+h1 mark{background:linear-gradient(transparent 55%,var(--hi) 55%);color:inherit;padding:0 .1em}
+header{padding:clamp(18px,3vw,32px) max(4vw,16px) 8px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:end;justify-content:space-between}
+header p{margin:0;color:var(--mute);max-width:56ch}
+main{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;padding:14px max(4vw,16px) 40px;max-width:1400px;margin:0 auto;align-items:start}
+.hint{padding-bottom:12px!important}
+@media(max-width:860px){main{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.tools{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-bottom:1px solid var(--line)}
+button,.btn,select{font:600 15px/1 Inter,system-ui,sans-serif;min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+select{font-size:16px;font-weight:500;padding-right:10px}
+button:hover,.btn:hover{border-color:var(--ink)}
+button:focus-visible,.btn:focus-within,select:focus-visible,textarea:focus-visible{outline:3px solid var(--hi);outline-offset:2px}
+button:disabled{opacity:.45;cursor:not-allowed;border-color:var(--line)}
+.primary{background:var(--hi);color:var(--hiInk);border-color:var(--hi)}
+.primary:hover{border-color:var(--hiInk)}
+.btn input{position:absolute;width:1px;height:1px;opacity:0}
+.stage{position:relative;background:var(--stage);border-radius:0 0 14px 14px;min-height:clamp(320px,60vh,640px);display:grid;place-items:center;overflow:hidden;touch-action:none;user-select:none}
+.stage.drag{outline:3px dashed var(--hi);outline-offset:-10px}
+#cv{display:none;max-width:100%;max-height:100%}
+.empty{text-align:center;padding:28px;color:var(--mute);max-width:380px}
+.empty svg{width:120px;height:auto;margin-bottom:10px}
+.empty b{display:block;color:var(--ink);font:700 20px/1.2 sans-serif;margin-bottom:6px}
+#sel{position:absolute;display:none;border:2px solid var(--hi);background:rgba(255,214,10,.18);box-shadow:0 0 0 9999px rgba(0,0,0,.42);cursor:move}
+#sel i{position:absolute;width:26px;height:26px;background:var(--hi);border:2px solid var(--hiInk);border-radius:50%;transform:translate(-50%,-50%)}
+#sel i[data-h=nw]{left:0;top:0;cursor:nwse-resize}#sel i[data-h=ne]{left:100%;top:0;cursor:nesw-resize}
+#sel i[data-h=sw]{left:0;top:100%;cursor:nesw-resize}#sel i[data-h=se]{left:100%;top:100%;cursor:nwse-resize}
+.hint{font-size:13px;color:var(--mute);padding:8px 12px 0}
+aside{display:flex;flex-direction:column;gap:14px}
+.panel{padding:16px}
+.panel h2{font:700 18px/1.2 sans-serif;margin:0 0 12px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+label.chk{display:flex;gap:8px;align-items:center;font-size:15px;min-height:36px;cursor:pointer}
+label.chk input{width:20px;height:20px;accent-color:var(--hi)}
+.field{display:grid;gap:6px;font-size:14px;color:var(--mute)}
+#scan{width:100%;justify-content:center;font-size:17px;min-height:52px;margin-top:12px}
+.bar{height:8px;border-radius:8px;background:var(--line);overflow:hidden;margin-top:12px;display:none}
+.bar span{display:block;height:100%;width:0;background:var(--hi);transition:width .2s}
+#status{font-size:14px;color:var(--mute);margin-top:8px;min-height:22px}
+textarea{width:100%;min-height:220px;resize:vertical;font:16px/1.5 Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px}
+.meta{font-size:13px;color:var(--mute);margin:8px 0 12px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:10px;font-weight:600;opacity:0;pointer-events:none;transition:.25s}
+#toast.on{opacity:1;transform:translateX(-50%)}
+kbd{font:600 12px/1 Inter,system-ui,sans-serif;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:2px 6px;background:var(--bg);color:var(--ink)}
+.tip{font-size:13px;color:var(--mute);margin:6px 0 0}
+.hist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.hist li button{width:100%;justify-content:flex-start;font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;display:block;text-align:left;line-height:44px}
+.hist:empty::after{content:"Aún no hay escaneos en esta sesión.";color:var(--mute);font-size:14px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Escáner de <mark>texto</mark></h1>
+  <p>Carga una imagen, marca la zona que quieres leer y copia el texto. Todo se procesa en tu dispositivo, sin internet.</p>
+</header>
+<main>
+  <section class="card">
+    <div class="tools">
+      <button id="cap" class="primary" hidden>Capturar pantalla</button>
+      <label class="btn" id="loadBtn">Cargar imagen<input id="file" type="file" accept="image/*"></label>
+      <button id="all" disabled>Seleccionar todo</button>
+      <button id="rot" disabled>Rotar 90°</button>
+      <button id="clr" disabled>Quitar selección</button>
+    </div>
+    <div class="stage" id="stage">
+      <div class="empty" id="empty">
+        <svg viewBox="0 0 120 90" aria-hidden="true"><rect x="8" y="6" width="104" height="78" rx="8" fill="none" stroke="currentColor" stroke-width="3"/><rect x="22" y="22" width="60" height="7" rx="3" fill="currentColor" opacity=".35"/><rect x="22" y="36" width="76" height="7" rx="3" fill="currentColor" opacity=".35"/><rect x="22" y="50" width="48" height="7" rx="3" fill="currentColor" opacity=".35"/><rect x="18" y="32" width="84" height="15" rx="2" fill="#ffd60a" opacity=".75"/></svg>
+        <b>Sin imagen todavía</b>
+        <span id="emptyWeb">Toca «Cargar imagen» para elegir una foto o tomarla con la cámara. En PC también puedes arrastrarla aquí o pegarla con Ctrl+V.</span><span id="emptyAnd" hidden>Haz una captura de pantalla del teléfono, pulsa <b style="display:inline;font:inherit;font-weight:700;color:inherit;margin:0">Compartir → Escáner de texto</b> y marca con el dedo la zona que quieres leer. También puedes tocar «Cargar imagen».</span><span id="emptyDesk" hidden>Pulsa «Capturar pantalla» o <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> desde cualquier programa y marca con el ratón la zona que quieres leer. También puedes cargar, arrastrar o pegar una imagen.</span>
+      </div>
+      <canvas id="cv"></canvas>
+      <div id="sel"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>
+    </div>
+    <p class="hint" id="hint" hidden>Arrastra sobre la imagen para marcar una zona. Mueve el recuadro o sus esquinas para ajustarlo. Sin selección se escanea la imagen completa.</p>
+  </section>
+
+  <aside>
+    <div class="card panel">
+      <h2>Escanear</h2>
+      <label class="chk"><input type="checkbox" id="enh" checked> Mejorar contraste (gris)</label>
+      <label class="chk"><input type="checkbox" id="lines"> Unir líneas en un párrafo</label>
+      <label class="chk" id="autoRow" hidden><input type="checkbox" id="auto" checked> Copiar el texto automáticamente al capturar</label>
+      <p class="tip" id="tip" hidden>Atajo desde cualquier programa: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd>. Al cerrar la ventana, la app sigue en la bandeja (junto al reloj) para que el atajo funcione.</p>
+      <button id="scan" class="primary" disabled>Escanear zona</button>
+      <div class="bar" id="bar"><span id="barIn"></span></div>
+      <div id="status"></div>
+    </div>
+
+    <div class="card panel">
+      <h2>Texto obtenido</h2>
+      <textarea id="out" placeholder="El texto reconocido aparecerá aquí. Puedes corregirlo antes de copiar."></textarea>
+      <div class="meta" id="meta"></div>
+      <div class="row">
+        <button id="copy" class="primary" disabled>Copiar texto</button>
+        <button id="wipe" disabled>Borrar</button>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <h2>Escaneos recientes</h2>
+      <ul class="hist" id="hist"></ul>
+    </div>
+  </aside>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="lib/tesseract.min.js"></script>
+<script>
+{
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d'),stage=$('stage'),sel=$('sel'),out=$('out');
+let img=null,rot=0,rect=null,busy=false,engine=null;
+const history=[];
+const base=new URL('.',location.href).href;
+
+function toast(t){const e=$('toast');e.textContent=t;e.classList.add('on');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('on'),1800)}
+function status(t){$('status').textContent=t}
+
+/* ---------- Carga de imagen ---------- */
+function loadSrc(src,done){
+  const im=new Image();
+  im.onload=()=>{img=im;rot=0;rect=null;draw();if(src.startsWith('blob:'))URL.revokeObjectURL(src);done&&done()};
+  im.onerror=()=>toast('No se pudo abrir la imagen');
+  im.src=src;
+}
+function loadFile(f){
+  if(!f||!f.type.startsWith('image/')){toast('Ese archivo no es una imagen');return}
+  loadSrc(URL.createObjectURL(f));
+}
+$('file').addEventListener('change',e=>{loadFile(e.target.files[0]);e.target.value=''});
+['dragenter','dragover'].forEach(t=>stage.addEventListener(t,e=>{e.preventDefault();stage.classList.add('drag')}));
+['dragleave','drop'].forEach(t=>stage.addEventListener(t,e=>{e.preventDefault();stage.classList.remove('drag')}));
+stage.addEventListener('drop',e=>loadFile(e.dataTransfer.files[0]));
+document.addEventListener('paste',e=>{
+  if(document.activeElement===out)return;
+  const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/'));
+  if(it){loadFile(it.getAsFile());toast('Imagen pegada')}
+});
+
+/* ---------- Dibujo ---------- */
+function draw(){
+  if(!img)return;
+  const sw=rot%180?img.height:img.width, sh=rot%180?img.width:img.height;
+  cv.width=sw;cv.height=sh;
+  ctx.save();ctx.translate(sw/2,sh/2);ctx.rotate(rot*Math.PI/180);ctx.drawImage(img,-img.width/2,-img.height/2);ctx.restore();
+  cv.style.display='block';$('empty').style.display='none';$('hint').hidden=false;
+  fit();['all','rot','scan'].forEach(i=>$(i).disabled=false);
+  showSel();
+}
+function fit(){
+  if(!img)return;
+  const W=stage.clientWidth-16,H=stage.clientHeight-16,s=Math.min(W/cv.width,H/cv.height,1.0e9);
+  cv.style.width=Math.floor(cv.width*s)+'px';cv.style.height=Math.floor(cv.height*s)+'px';
+  showSel();
+}
+const ro=new ResizeObserver(fit);ro.observe(stage);
+
+/* rect está en coordenadas del lienzo (píxeles reales) */
+function scale(){return cv.getBoundingClientRect().width/cv.width}
+function showSel(){
+  if(!rect||!img){sel.style.display='none';$('clr').disabled=true;$('scan').textContent=img?'Escanear imagen completa':'Escanear zona';return}
+  const c=cv.getBoundingClientRect(),s0=stage.getBoundingClientRect(),k=scale();
+  Object.assign(sel.style,{display:'block',left:(c.left-s0.left+rect.x*k)+'px',top:(c.top-s0.top+rect.y*k)+'px',width:rect.w*k+'px',height:rect.h*k+'px'});
+  $('clr').disabled=false;$('scan').textContent='Escanear zona seleccionada';
+}
+
+/* ---------- Selección con ratón o dedo ---------- */
+let drag=null;
+function pt(e){const c=cv.getBoundingClientRect(),k=scale();return{x:Math.max(0,Math.min(cv.width,(e.clientX-c.left)/k)),y:Math.max(0,Math.min(cv.height,(e.clientY-c.top)/k))}}
+stage.addEventListener('pointerdown',e=>{
+  if(!img||busy)return;
+  const p=pt(e),h=e.target.dataset?.h;
+  if(h)drag={mode:h,start:p,r:{...rect}};
+  else if(e.target===sel)drag={mode:'move',start:p,r:{...rect}};
+  else drag={mode:'new',start:p};
+  stage.setPointerCapture(e.pointerId);e.preventDefault();
+});
+stage.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  const p=pt(e),s=drag.start,r=drag.r;
+  if(drag.mode==='new'){rect={x:Math.min(s.x,p.x),y:Math.min(s.y,p.y),w:Math.abs(p.x-s.x),h:Math.abs(p.y-s.y)}}
+  else if(drag.mode==='move'){rect={...r,x:Math.max(0,Math.min(cv.width-r.w,r.x+p.x-s.x)),y:Math.max(0,Math.min(cv.height-r.h,r.y+p.y-s.y))}}
+  else{
+    let x1=r.x,y1=r.y,x2=r.x+r.w,y2=r.y+r.h;
+    if(drag.mode.includes('w'))x1=p.x; if(drag.mode.includes('e'))x2=p.x;
+    if(drag.mode.includes('n'))y1=p.y; if(drag.mode.includes('s'))y2=p.y;
+    rect={x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1)};
+  }
+  showSel();
+});
+function endDrag(){if(drag&&rect&&(rect.w<8||rect.h<8))rect=null;drag=null;showSel()}
+stage.addEventListener('pointerup',endDrag);stage.addEventListener('pointercancel',endDrag);
+
+$('all').onclick=()=>{rect={x:0,y:0,w:cv.width,h:cv.height};showSel()};
+$('clr').onclick=()=>{rect=null;showSel()};
+$('rot').onclick=()=>{rot=(rot+90)%360;rect=null;draw()};
+
+/* ---------- OCR ---------- */
+function logger(m){
+  if(m.status==='recognizing text'){$('barIn').style.width=Math.round(m.progress*100)+'%';status('Leyendo texto… '+Math.round(m.progress*100)+'%')}
+  else if(m.status&&busy){status(traduce(m.status))}
+}
+/* El idioma se lee aquí y se entrega al motor (más fiable en Android que dejar que el motor lo descargue) */
+function getWorker(){
+  if(!engine){
+    const start=(async()=>{
+      const r=await fetch(base+'lang/spa.traineddata');
+      if(!r.ok)throw new Error('no se encontró el idioma ('+r.status+')');
+      const data=new Uint8Array(await r.arrayBuffer());
+      return Tesseract.createWorker([{code:'spa',data}],1,{
+        workerPath:base+'lib/worker.min.js',corePath:base+'core/',
+        cacheMethod:'none',workerBlobURL:false,logger});
+    })();
+    engine=Promise.race([start,new Promise((_,no)=>setTimeout(()=>no(new Error('el motor tardó demasiado en iniciar')),90000))])
+      .catch(e=>{engine=null;throw e});
+  }
+  return engine;
+}
+function traduce(s){return({'loading tesseract core':'Cargando motor…','initializing tesseract':'Iniciando…','loading language traineddata':'Cargando idioma…','initializing api':'Casi listo…'})[s]||s}
+
+function crop(){
+  const r=rect||{x:0,y:0,w:cv.width,h:cv.height};
+  const sx=Math.round(r.x),sy=Math.round(r.y),sw=Math.max(1,Math.round(r.w)),sh=Math.max(1,Math.round(r.h));
+  const up=Math.min(3,Math.max(1,1000/Math.max(sw,sh)));  /* ampliar zonas pequeñas */
+  const c=document.createElement('canvas');c.width=Math.round(sw*up);c.height=Math.round(sh*up);
+  const x=c.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(cv,sx,sy,sw,sh,0,0,c.width,c.height);
+  if($('enh').checked){
+    const d=x.getImageData(0,0,c.width,c.height),p=d.data;let mn=255,mx=0;
+    for(let i=0;i<p.length;i+=4){const g=.299*p[i]+.587*p[i+1]+.114*p[i+2];p[i]=g;if(g<mn)mn=g;if(g>mx)mx=g}
+    const k=255/Math.max(1,mx-mn);
+    for(let i=0;i<p.length;i+=4){const g=(p[i]-mn)*k;p[i]=p[i+1]=p[i+2]=g}
+    x.putImageData(d,0,0);
+  }
+  return c;
+}
+
+async function runScan(){
+  if(!img||busy)return '';
+  let result='';
+  busy=true;$('scan').disabled=true;$('bar').style.display='block';$('barIn').style.width='0';
+  try{
+    if(!engine)status('Preparando el motor de lectura…');
+    const w=await getWorker();
+    const {data}=await w.recognize(crop());
+    let t=(data.text||'').replace(/[ \t]+\n/g,'\n').trim();
+    if($('lines').checked)t=t.replace(/-\n(?=\p{Ll})/gu,'').replace(/\n(?!\n)/g,' ').replace(/ {2,}/g,' ');
+    out.value=t;
+    $('meta').textContent=t?`${t.split(/\s+/).filter(Boolean).length} palabras · confianza ${Math.round(data.confidence)}%`:'';
+    status(t?'Listo.':'No se encontró texto. Prueba con una zona más ajustada o rota la imagen.');
+    if(t){history.unshift(t);if(history.length>8)history.pop();renderHist()}
+    syncBtns();result=t;
+  }catch(err){console.error(err);status(err&&err.message&&typeof Tesseract!=='undefined'?'Hubo un problema: '+err.message+'. Toca «Escanear» para reintentar.':'Hubo un problema al leer la imagen. Inténtalo de nuevo.')}
+  finally{busy=false;$('scan').disabled=false;setTimeout(()=>$('bar').style.display='none',400)}
+  return result;
+}
+$('scan').onclick=()=>runScan();
+
+/* ---------- Copiar ---------- */
+async function copy(t){
+  if(window.escaner){try{await window.escaner.copy(t);return true}catch(e){}}
+  try{await navigator.clipboard.writeText(t);return true}catch(e){}
+  try{out.focus();out.select();return document.execCommand('copy')}catch(e){return false}
+}
+$('copy').onclick=async()=>{toast(await copy(out.value)?'Texto copiado':'Selecciona el texto y cópialo manualmente')};
+$('wipe').onclick=()=>{out.value='';$('meta').textContent='';syncBtns()};
+out.addEventListener('input',syncBtns);
+function syncBtns(){const e=!out.value.trim();$('copy').disabled=e;$('wipe').disabled=e}
+
+function renderHist(){
+  $('hist').innerHTML=history.map((t,i)=>`<li><button data-i="${i}" title="Volver a este texto">${t.slice(0,70).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c])}</button></li>`).join('');
+}
+if(!window.escaner)$('loadBtn').classList.add('primary');
+/* ---------- Captura de pantalla (solo app de escritorio) ---------- */
+if(window.escaner){
+  ['cap','autoRow','tip','emptyDesk'].forEach(i=>$(i).hidden=false);document.querySelector('header p').textContent='Captura cualquier zona de tu pantalla (Ctrl+Shift+X) o carga una imagen, y copia el texto. Todo se procesa en tu equipo, sin internet.';$('emptyWeb').hidden=true;
+  $('cap').onclick=()=>window.escaner.capture();
+  window.escaner.onCaptured(async src=>{
+    loadSrc(src,async()=>{
+      const t=await runScan();
+      if(t&&$('auto').checked){toast(await copy(t)?'Texto copiado al portapapeles':'No se pudo copiar; usa el botón Copiar')}
+    });
+  });
+  window.escaner.onError(msg=>toast(msg));
+}
+/* ---------- Imagen compartida desde Android (Compartir → Escáner de texto) ---------- */
+const isAndroid=!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android')||/Android/i.test(navigator.userAgent);
+if(isAndroid&&!window.escaner){$('emptyWeb').hidden=true;$('emptyAnd').hidden=false}
+window.__escShare=src=>{
+  if(!src){toast('No se pudo abrir la imagen compartida');return}
+  out.value='';$('meta').textContent='';syncBtns();
+  loadSrc(src,()=>{status('Imagen recibida. Marca con el dedo la zona que quieres leer y toca «Escanear».');stage.scrollIntoView({behavior:'smooth',block:'start'})});
+};
+/* Preparar el motor apenas abre la app, así el primer escaneo es rápido */
+setTimeout(()=>{getWorker().then(()=>{if(!busy&&!$('status').textContent)status('Motor listo.')}).catch(e=>console.warn(e))},300);
+$('hist').addEventListener('click',e=>{const b=e.target.closest('button');if(b){out.value=history[b.dataset.i];syncBtns();toast('Texto recuperado')}});
+}
+</script>
+</body>
+</html>
