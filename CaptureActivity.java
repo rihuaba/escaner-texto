@@ -19,6 +19,7 @@ public class CaptureActivity extends Activity {
 
     private static final int REQ = 7001;
     static final String EXTRA_FROM_APP = "fromApp";
+    private boolean fromApp = false;
     static CaptureActivity current = null;
     private boolean waiting = false;
 
@@ -29,7 +30,10 @@ public class CaptureActivity extends Activity {
         // se relanza en su propia tarea y la app principal pasa a segundo plano,
         // así queda visible la app que se estaba usando antes.
         Intent in = getIntent();
-        if (savedInstanceState == null && in != null && Intent.ACTION_VIEW.equals(in.getAction())) {
+        boolean fromAppButton = in != null && Intent.ACTION_VIEW.equals(in.getAction());
+        if (fromAppButton) fromApp = true;
+        // Android 13 o anterior: no hay selector de apps; se muestra la app anterior y se captura la pantalla
+        if (savedInstanceState == null && fromAppButton && Build.VERSION.SDK_INT < 34) {
             startActivity(new Intent(this, CaptureActivity.class)
                     .putExtra(EXTRA_FROM_APP, true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
@@ -40,14 +44,20 @@ public class CaptureActivity extends Activity {
             return;
         }
         current = this;
+        if (in != null && in.getBooleanExtra(EXTRA_FROM_APP, false)) fromApp = true;
+        if (savedInstanceState != null) fromApp = savedInstanceState.getBoolean("fromApp", fromApp);
         if (savedInstanceState != null && savedInstanceState.getBoolean("waiting")) {
             waiting = true;       // ya se pidió el permiso; esperamos la captura
             return;
         }
         MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         Intent ask;
-        if (Build.VERSION.SDK_INT >= 34) {
-            // Android 14+: pedir directamente la pantalla completa (no «una sola app»)
+        if (Build.VERSION.SDK_INT >= 34 && fromApp) {
+            // Botón de la app (Android 14+): Android deja elegir «Una sola app» y muestra
+            // la lista de apps abiertas para escoger cuál recortar
+            ask = mpm.createScreenCaptureIntent();
+        } else if (Build.VERSION.SDK_INT >= 34) {
+            // Botón de ajustes rápidos: pantalla completa (ya estás en la app que quieres)
             ask = mpm.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay());
         } else {
             ask = mpm.createScreenCaptureIntent();
@@ -64,6 +74,7 @@ public class CaptureActivity extends Activity {
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putBoolean("waiting", waiting);
+        out.putBoolean("fromApp", fromApp);
     }
 
     @Override
@@ -79,7 +90,7 @@ public class CaptureActivity extends Activity {
                 .putExtra(CaptureService.EXTRA_CODE, resultCode)
                 .putExtra(CaptureService.EXTRA_DATA, data)
                 // Si viene del botón de la app, espera un poco más a que se vea la otra app
-                .putExtra(CaptureService.EXTRA_DELAY, getIntent().getBooleanExtra(EXTRA_FROM_APP, false) ? 900 : 450);
+                .putExtra(CaptureService.EXTRA_DELAY, fromApp ? 1000 : 450);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
         else startService(svc);
     }
@@ -87,9 +98,14 @@ public class CaptureActivity extends Activity {
     /** Lo llama CaptureService cuando terminó (path == null si falló). */
     void onCaptured(String path) {
         if (path != null) {
-            startActivity(new Intent(this, CropActivity.class).putExtra(CropActivity.EXTRA_PATH, path));
+            // En su propia tarea: al terminar vuelves a la app recortada, lista para pegar
+            startActivity(new Intent(this, CropActivity.class)
+                    .putExtra(CropActivity.EXTRA_PATH, path)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         } else {
-            Toast.makeText(this, "No se pudo capturar la pantalla", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, CaptureService.lastWasBlack
+                    ? "Esa app no permite capturas de pantalla (está protegida). Prueba con otra."
+                    : "No se pudo capturar la pantalla", Toast.LENGTH_LONG).show();
         }
         finish();
         overridePendingTransition(0, 0);

@@ -40,6 +40,10 @@ public class CaptureService extends Service {
     private VirtualDisplay display;
     private ImageReader reader;
     private boolean done = false;
+    private Bitmap fallback = null;
+    private boolean fallbackScheduled = false;
+    /** true si la última captura salió completamente negra (app protegida contra capturas). */
+    static boolean lastWasBlack = false;
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
@@ -47,6 +51,7 @@ public class CaptureService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         goForeground();
+        lastWasBlack = false;
         if (intent == null) { finish(null); return START_NOT_STICKY; }
         final int code = intent.getIntExtra(EXTRA_CODE, 0);
         final Intent data = Build.VERSION.SDK_INT >= 33
@@ -106,22 +111,23 @@ public class CaptureService extends Service {
                 try {
                     img = r.acquireLatestImage();
                     if (img == null || done) return;
-                    Image.Plane p = img.getPlanes()[0];
-                    ByteBuffer buf = p.getBuffer();
-                    int pixelStride = p.getPixelStride(), rowStride = p.getRowStride();
-                    int padding = rowStride - pixelStride * fw;
-                    Bitmap full = Bitmap.createBitmap(fw + padding / pixelStride, fh, Bitmap.Config.ARGB_8888);
-                    full.copyPixelsFromBuffer(buf);
+                    Bitmap bmp = toBitmap(img, fw, fh);
                     img.close();
                     img = null;
-                    Bitmap bmp = Bitmap.createBitmap(full, 0, 0, fw, fh);
-                    if (bmp != full) full.recycle();
-                    File out = new File(getCacheDir(), "captura.png");
-                    try (FileOutputStream fos = new FileOutputStream(out)) {
-                        bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
+                    if (!isMostlyBlack(bmp)) {           // fotograma bueno: listo
+                        if (fallback != null) { fallback.recycle(); fallback = null; }
+                        save(bmp, false);
+                        return;
                     }
-                    bmp.recycle();
-                    finish(out.getAbsolutePath());
+                    // Fotograma negro (la app aún no se dibuja, o está protegida): esperar otro
+                    if (fallback != null) fallback.recycle();
+                    fallback = bmp;
+                    if (!fallbackScheduled) {
+                        fallbackScheduled = true;
+                        handler.postDelayed(() -> {
+                            if (!done && fallback != null) { Bitmap f = fallback; fallback = null; save(f, true); }
+                        }, 1800);
+                    }
                 } catch (Exception e) {
                     finish(null);
                 } finally {
@@ -130,6 +136,46 @@ public class CaptureService extends Service {
             }, handler);
             display = projection.createVirtualDisplay("escaner", w, h, dpi,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.getSurface(), null, handler);
+        } catch (Exception e) {
+            finish(null);
+        }
+    }
+
+    private static Bitmap toBitmap(Image img, int w, int h) {
+        Image.Plane p = img.getPlanes()[0];
+        ByteBuffer buf = p.getBuffer();
+        int pixelStride = p.getPixelStride(), rowStride = p.getRowStride();
+        int padding = rowStride - pixelStride * w;
+        Bitmap full = Bitmap.createBitmap(w + padding / pixelStride, h, Bitmap.Config.ARGB_8888);
+        full.copyPixelsFromBuffer(buf);
+        Bitmap bmp = Bitmap.createBitmap(full, 0, 0, w, h);
+        if (bmp != full) full.recycle();
+        return bmp;
+    }
+
+    /** Revisa una cuadrícula de puntos: si casi todos son negros, el fotograma está vacío. */
+    private static boolean isMostlyBlack(Bitmap b) {
+        int w = b.getWidth(), h = b.getHeight(), dark = 0, total = 0;
+        for (int y = 1; y <= 24; y++) {
+            for (int x = 1; x <= 24; x++) {
+                int c = b.getPixel(x * w / 25, y * h / 25);
+                int sum = ((c >> 16) & 0xff) + ((c >> 8) & 0xff) + (c & 0xff);
+                if (sum < 30) dark++;
+                total++;
+            }
+        }
+        return dark > total * 0.97;
+    }
+
+    private void save(Bitmap bmp, boolean black) {
+        try {
+            File out = new File(getCacheDir(), "captura.png");
+            try (FileOutputStream fos = new FileOutputStream(out)) {
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
+            }
+            bmp.recycle();
+            lastWasBlack = black;
+            finish(black ? null : out.getAbsolutePath());
         } catch (Exception e) {
             finish(null);
         }
