@@ -18,12 +18,27 @@ import android.widget.Toast;
 public class CaptureActivity extends Activity {
 
     private static final int REQ = 7001;
+    static final String EXTRA_FROM_APP = "fromApp";
     static CaptureActivity current = null;
     private boolean waiting = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Botón «Recortar otra app» dentro de la app (enlace escaner://capture):
+        // se relanza en su propia tarea y la app principal pasa a segundo plano,
+        // así queda visible la app que se estaba usando antes.
+        Intent in = getIntent();
+        if (savedInstanceState == null && in != null && Intent.ACTION_VIEW.equals(in.getAction())) {
+            startActivity(new Intent(this, CaptureActivity.class)
+                    .putExtra(EXTRA_FROM_APP, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
+            MainActivity main = MainActivity.current;
+            finish();
+            overridePendingTransition(0, 0);
+            if (main != null) main.moveTaskToBack(true);
+            return;
+        }
         current = this;
         if (savedInstanceState != null && savedInstanceState.getBoolean("waiting")) {
             waiting = true;       // ya se pidió el permiso; esperamos la captura
@@ -62,7 +77,9 @@ public class CaptureActivity extends Activity {
         waiting = true;
         Intent svc = new Intent(this, CaptureService.class)
                 .putExtra(CaptureService.EXTRA_CODE, resultCode)
-                .putExtra(CaptureService.EXTRA_DATA, data);
+                .putExtra(CaptureService.EXTRA_DATA, data)
+                // Si viene del botón de la app, espera un poco más a que se vea la otra app
+                .putExtra(CaptureService.EXTRA_DELAY, getIntent().getBooleanExtra(EXTRA_FROM_APP, false) ? 900 : 450);
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(svc);
         else startService(svc);
     }

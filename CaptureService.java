@@ -32,6 +32,7 @@ public class CaptureService extends Service {
 
     static final String EXTRA_CODE = "code";
     static final String EXTRA_DATA = "data";
+    static final String EXTRA_DELAY = "delay";
     private static final String CHANNEL = "captura";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -52,7 +53,8 @@ public class CaptureService extends Service {
                 ? intent.getParcelableExtra(EXTRA_DATA, Intent.class)
                 : intent.getParcelableExtra(EXTRA_DATA);
         // Espera breve para que desaparezca el aviso de permiso antes de capturar
-        handler.postDelayed(() -> start(code, data), 450);
+        int delay = intent.getIntExtra(EXTRA_DELAY, 450);
+        handler.postDelayed(() -> start(code, data), delay);
         // Si algo se queda trabado, se cancela a los 8 s
         handler.postDelayed(() -> { if (!done) finish(null); }, 8000);
         return START_NOT_STICKY;

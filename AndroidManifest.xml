@@ -37,7 +37,15 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:taskAffinity="com.escaner.texto.captura"
             android:excludeFromRecents="true"
-            android:exported="false" />
+            android:exported="true">
+            <!-- Botón «Recortar otra app» dentro de la app -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="escaner" android:host="capture" />
+            </intent-filter>
+        </activity>
 
         <!-- Pantalla de recorte (Texto / Imagen) -->
         <activity

@@ -31,6 +31,7 @@ import java.io.InputStream;
 public class MainActivity extends BridgeActivity {
 
     static final String ACTION_SCAN = "com.escaner.texto.ESCANEAR";
+    static MainActivity current = null;
     private static final int MAX_SIDE = 4096;          // limita imágenes enormes
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String pending = null;
@@ -40,6 +41,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        current = this;
         handleIntent(getIntent());
         handler.postDelayed(this::offerQuickTile, 2500);
     }
@@ -158,6 +160,18 @@ public class MainActivity extends BridgeActivity {
     private void retry() {
         if (++tries > 60) { pending = null; return; }   // ~30 s como máximo
         handler.postDelayed(this::deliver, 500);
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        current = this;
+    }
+
+    @Override
+    public void onDestroy() {
+        if (current == this) current = null;
+        super.onDestroy();
     }
 
     /** Android 13+: ofrece una sola vez agregar el botón a los ajustes rápidos. */
