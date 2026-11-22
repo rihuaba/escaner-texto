@@ -86,7 +86,7 @@ kbd{font:600 12px/1 Inter,system-ui,sans-serif;border:1px solid var(--line);bord
       <div class="empty" id="empty">
         <svg viewBox="0 0 120 90" aria-hidden="true"><rect x="8" y="6" width="104" height="78" rx="8" fill="none" stroke="currentColor" stroke-width="3"/><rect x="22" y="22" width="60" height="7" rx="3" fill="currentColor" opacity=".35"/><rect x="22" y="36" width="76" height="7" rx="3" fill="currentColor" opacity=".35"/><rect x="22" y="50" width="48" height="7" rx="3" fill="currentColor" opacity=".35"/><rect x="18" y="32" width="84" height="15" rx="2" fill="#ffd60a" opacity=".75"/></svg>
         <b>Sin imagen todavía</b>
-        <span id="emptyWeb">Toca «Cargar imagen» para elegir una foto o tomarla con la cámara. En PC también puedes arrastrarla aquí o pegarla con Ctrl+V.</span><span id="emptyAnd" hidden>Haz una captura de pantalla del teléfono, pulsa <b style="display:inline;font:inherit;font-weight:700;color:inherit;margin:0">Compartir → Escáner de texto</b> y marca con el dedo la zona que quieres leer. También puedes tocar «Cargar imagen».</span><span id="emptyDesk" hidden>Pulsa «Capturar pantalla» o <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> desde cualquier programa y marca con el ratón la zona que quieres leer. También puedes cargar, arrastrar o pegar una imagen.</span>
+        <span id="emptyWeb">Toca «Cargar imagen» para elegir una foto o tomarla con la cámara. En PC también puedes arrastrarla aquí o pegarla con Ctrl+V.</span><span id="emptyAnd" hidden>Desde cualquier app, desliza desde arriba y toca <b style="display:inline;font:inherit;font-weight:700;color:inherit;margin:0">Escanear</b> en los ajustes rápidos: marcas la zona y eliges Texto o Imagen. También puedes hacer una captura, pulsar <b style="display:inline;font:inherit;font-weight:700;color:inherit;margin:0">Compartir → Escáner de texto</b> y marcar la zona, o tocar «Cargar imagen».</span><span id="emptyDesk" hidden>Pulsa «Capturar pantalla» o <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>X</kbd> desde cualquier programa y marca con el ratón la zona que quieres leer. También puedes cargar, arrastrar o pegar una imagen.</span>
       </div>
       <canvas id="cv"></canvas>
       <div id="sel"><i data-h="nw"></i><i data-h="ne"></i><i data-h="sw"></i><i data-h="se"></i></div>
@@ -305,9 +305,20 @@ if(window.escaner){
 /* ---------- Imagen compartida desde Android (Compartir → Escáner de texto) ---------- */
 const isAndroid=!!(window.Capacitor&&window.Capacitor.getPlatform&&window.Capacitor.getPlatform()==='android')||/Android/i.test(navigator.userAgent);
 if(isAndroid&&!window.escaner){$('emptyWeb').hidden=true;$('emptyAnd').hidden=false}
-window.__escShare=src=>{
-  if(!src){toast('No se pudo abrir la imagen compartida');return}
+window.__escShare=(src,auto)=>{
+  if(!src){toast('No se pudo abrir la imagen');return}
   out.value='';$('meta').textContent='';syncBtns();
+  if(auto){
+    /* Recorte desde el botón «Escanear» de ajustes rápidos: escanear y copiar de una vez */
+    loadSrc(src,async()=>{
+      const t=await runScan();
+      if(!t)return;
+      out.scrollIntoView({behavior:'smooth',block:'center'});
+      let ok=false;try{await navigator.clipboard.writeText(t);ok=true}catch(e){}
+      toast(ok?'Texto copiado':'Toca «Copiar texto» para copiarlo');
+    });
+    return;
+  }
   loadSrc(src,()=>{status('Imagen recibida. Marca con el dedo la zona que quieres leer y toca «Escanear».');stage.scrollIntoView({behavior:'smooth',block:'start'})});
 };
 /* Preparar el motor apenas abre la app, así el primer escaneo es rápido */

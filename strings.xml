@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Escáner de texto</string>
+    <string name="title_activity_main">Escáner de texto</string>
+    <string name="package_name">com.escaner.texto</string>
+    <string name="custom_url_scheme">com.escaner.texto</string>
+    <string name="share_label">Escáner de texto</string>
+    <string name="tile_label">Escanear</string>
+</resources>

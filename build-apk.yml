@@ -20,6 +20,30 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # Los archivos subidos sueltos a la raíz del repositorio se copian a su carpeta
+      - name: Colocar archivos en su carpeta
+        run: |
+          J=android/app/src/main/java/com/escaner/texto
+          M=android/app/src/main
+          for f in MainActivity CaptureActivity CaptureService CaptureTileService CropActivity CropView; do
+            if [ -f "$f.java" ]; then cp "$f.java" "$J/$f.java"; fi
+          done
+          if [ -f AndroidManifest.xml ]; then cp AndroidManifest.xml "$M/AndroidManifest.xml"; fi
+          if [ -f strings.xml ]; then cp strings.xml "$M/res/values/strings.xml"; fi
+          if [ -f ic_tile.xml ]; then cp ic_tile.xml "$M/res/drawable/ic_tile.xml"; fi
+          if [ -f index.html ]; then cp index.html www/index.html; fi
+          if [ -f worker.min.js ]; then cp worker.min.js www/lib/worker.min.js; fi
+          if [ -f spa.traineddata ]; then cp spa.traineddata www/lang/spa.traineddata; fi
+          rm -f www/lang/eng.traineddata.gz www/lang/spa.traineddata.gz
+          sed -i 's/versionCode [0-9]*/versionCode 3/; s/versionName "[^"]*"/versionName "1.3"/' android/app/build.gradle
+          ls -la "$J" www www/lang
+
+      # Firma fija: las próximas versiones se instalan encima sin desinstalar
+      - name: Clave de firma
+        run: |
+          mkdir -p ~/.android
+          if [ -f debug.keystore ]; then cp debug.keystore ~/.android/debug.keystore; fi
+
       - name: Instalar dependencias
         run: npm install
 
@@ -33,10 +57,10 @@ jobs:
           ./gradlew assembleDebug --no-daemon
 
       - name: Renombrar APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk EscanerDeTexto-1.1.0.apk
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk EscanerDeTexto-1.3.0.apk
 
       - name: Subir APK
         uses: actions/upload-artifact@v4
         with:
-          name: EscanerDeTexto-APK
-          path: EscanerDeTexto-1.1.0.apk
+          name: EscanerDeTexto-APK-1.3.0
+          path: EscanerDeTexto-1.3.0.apk
