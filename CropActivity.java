@@ -1,9 +1,9 @@
 package com.escaner.texto;
 
 import android.app.Activity;
-import android.content.ContentResolver;
-import android.content.ContentValues;
-import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -13,8 +13,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.MediaStore;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
@@ -25,17 +23,21 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.core.content.FileProvider;
+
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
+
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.OutputStream;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 
 /**
  * Pantalla de recorte: muestra la captura congelada, dejas marcar la zona y eliges
- *  - «Texto»: abre la app con el recorte, lo escanea y copia el texto.
- *  - «Imagen»: guarda el recorte en la Galería (Imágenes › EscanerDeTexto).
+ *  - «Copiar texto»: lee el texto del recorte (ML Kit, sin internet) y lo copia al portapapeles.
+ *  - «Copiar imagen»: copia el recorte como imagen al portapapeles.
+ * En ambos casos vuelves a la app donde estabas, listo para pegar.
  */
 public class CropActivity extends Activity {
 
@@ -46,6 +48,8 @@ public class CropActivity extends Activity {
     private Bitmap shot;
     private CropView crop;
     private TextView hint;
+    private LinearLayout bar;
+    private boolean working = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,33 +69,38 @@ public class CropActivity extends Activity {
         root.addView(crop, new FrameLayout.LayoutParams(-1, -1));
 
         hint = new TextView(this);
-        hint.setText("Marca con el dedo la zona que quieres");
         hint.setTextColor(Color.WHITE);
         hint.setTextSize(15);
+        hint.setGravity(Gravity.CENTER);
         hint.setPadding((int) (16 * d), (int) (10 * d), (int) (16 * d), (int) (10 * d));
         hint.setBackground(round(Color.argb(220, 20, 20, 20), 12 * d));
         FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         hp.topMargin = (int) (36 * d);
+        hp.setMargins((int) (16 * d), (int) (36 * d), (int) (16 * d), 0);
         root.addView(hint, hp);
+        setHint(false);
 
-        LinearLayout bar = new LinearLayout(this);
+        bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER);
-        bar.setPadding((int) (10 * d), (int) (10 * d), (int) (10 * d), (int) (10 * d));
+        bar.setPadding((int) (8 * d), (int) (10 * d), (int) (8 * d), (int) (10 * d));
         bar.setBackground(round(Color.argb(235, 20, 20, 20), 18 * d));
-        bar.addView(button("Cancelar", Color.argb(0, 0, 0, 0), Color.WHITE, v -> finish()), weight());
-        bar.addView(button("Imagen", Color.rgb(244, 243, 239), INK, v -> saveImage()), weight());
-        bar.addView(button("Texto", YELLOW, INK, v -> scanText()), weight());
+        bar.addView(button("Cancelar", Color.argb(0, 0, 0, 0), Color.WHITE, v -> finish()), weight(0.8f));
+        bar.addView(button("Copiar imagen", Color.rgb(244, 243, 239), INK, v -> copyImage()), weight(1.1f));
+        bar.addView(button("Copiar texto", YELLOW, INK, v -> copyText()), weight(1.1f));
         FrameLayout.LayoutParams bp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
-        bp.setMargins((int) (14 * d), 0, (int) (14 * d), (int) (28 * d));
+        bp.setMargins((int) (12 * d), 0, (int) (12 * d), (int) (28 * d));
         root.addView(bar, bp);
 
-        crop.setListener(has -> hint.setText(has
-                ? "Ajusta el recuadro o elige Texto / Imagen"
-                : "Marca con el dedo la zona que quieres (sin recorte = pantalla completa)"));
-
+        crop.setListener(this::setHint);
         setContentView(root);
         hideSystemBars();
+    }
+
+    private void setHint(boolean hasSelection) {
+        hint.setText(hasSelection
+                ? "Ajusta el recuadro y elige qué copiar"
+                : "Marca con el dedo la zona que quieres copiar");
     }
 
     private void hideSystemBars() {
@@ -114,9 +123,10 @@ public class CropActivity extends Activity {
         return g;
     }
 
-    private LinearLayout.LayoutParams weight() {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, (int) (50 * getResources().getDisplayMetrics().density), 1);
-        int m = (int) (5 * getResources().getDisplayMetrics().density);
+    private LinearLayout.LayoutParams weight(float w) {
+        float d = getResources().getDisplayMetrics().density;
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, (int) (52 * d), w);
+        int m = (int) (4 * d);
         p.setMargins(m, 0, m, 0);
         return p;
     }
@@ -125,9 +135,10 @@ public class CropActivity extends Activity {
         Button b = new Button(this);
         b.setText(text);
         b.setAllCaps(false);
-        b.setTextSize(16);
+        b.setTextSize(15);
         b.setTypeface(Typeface.DEFAULT_BOLD);
         b.setTextColor(fg);
+        b.setPadding(0, 0, 0, 0);
         b.setBackground(round(bg, 12 * getResources().getDisplayMetrics().density));
         b.setOnClickListener(l);
         return b;
@@ -138,53 +149,66 @@ public class CropActivity extends Activity {
         return Bitmap.createBitmap(shot, r.left, r.top, r.width(), r.height());
     }
 
-    /** Texto: pasa el recorte a la app, que lo escanea y copia. */
-    private void scanText() {
+    private void setWorking(boolean w, String msg) {
+        working = w;
+        bar.setAlpha(w ? 0.5f : 1f);
+        for (int i = 0; i < bar.getChildCount(); i++) bar.getChildAt(i).setEnabled(!w);
+        if (msg != null) hint.setText(msg);
+    }
+
+    /** Copiar texto: lee el recorte con ML Kit y lo deja en el portapapeles. */
+    private void copyText() {
+        if (working) return;
+        setWorking(true, "Leyendo texto…");
+        final Bitmap b;
+        try {
+            b = cropped();
+        } catch (Exception e) {
+            setWorking(false, "No se pudo preparar el recorte");
+            return;
+        }
+        TextRecognizer recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+        recognizer.process(InputImage.fromBitmap(b, 0))
+                .addOnSuccessListener(result -> {
+                    String text = result.getText() == null ? "" : result.getText().trim();
+                    recognizer.close();
+                    if (text.isEmpty()) {
+                        setWorking(false, "No se encontró texto. Prueba con otro recorte.");
+                        return;
+                    }
+                    ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(ClipData.newPlainText("Texto escaneado", text));
+                    Toast.makeText(this, "Texto copiado, listo para pegar", Toast.LENGTH_SHORT).show();
+                    finish();
+                })
+                .addOnFailureListener(e -> {
+                    recognizer.close();
+                    setWorking(false, "No se pudo leer el texto. Inténtalo de nuevo.");
+                });
+    }
+
+    /** Copiar imagen: guarda el recorte y lo deja en el portapapeles como imagen. */
+    private void copyImage() {
+        if (working) return;
+        setWorking(true, "Copiando imagen…");
         try {
             Bitmap b = cropped();
-            File out = new File(getCacheDir(), "recorte.png");
+            File dir = new File(getCacheDir(), "recortes");
+            if (!dir.exists()) dir.mkdirs();
+            // Borra recortes viejos para no llenar la memoria
+            File[] old = dir.listFiles();
+            if (old != null) for (File f : old) f.delete();
+            File out = new File(dir, "recorte_" + System.currentTimeMillis() + ".png");
             try (FileOutputStream fos = new FileOutputStream(out)) {
                 b.compress(Bitmap.CompressFormat.PNG, 100, fos);
             }
-            Intent i = new Intent(this, MainActivity.class)
-                    .setAction(MainActivity.ACTION_SCAN)
-                    .putExtra(EXTRA_PATH, out.getAbsolutePath())
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            startActivity(i);
+            Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", out);
+            ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newUri(getContentResolver(), "Recorte", uri));
+            Toast.makeText(this, "Imagen copiada, lista para pegar", Toast.LENGTH_SHORT).show();
             finish();
         } catch (Exception e) {
-            Toast.makeText(this, "No se pudo preparar el recorte", Toast.LENGTH_LONG).show();
+            setWorking(false, "No se pudo copiar la imagen. Inténtalo de nuevo.");
         }
     }
-
-    /** Imagen: guarda el recorte en la Galería. */
-    private void saveImage() {
-        if (Build.VERSION.SDK_INT < 29) {
-            Toast.makeText(this, "Guardar imágenes requiere Android 10 o superior", Toast.LENGTH_LONG).show();
-            return;
-        }
-        try {
-            Bitmap b = cropped();
-            String name = "Recorte_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".png";
-            ContentValues v = new ContentValues();
-            v.put(MediaStore.Images.Media.DISPLAY_NAME, name);
-            v.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-            v.put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/EscanerDeTexto");
-            v.put(MediaStore.Images.Media.IS_PENDING, 1);
-            ContentResolver cr = getContentResolver();
-            Uri uri = cr.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
-            if (uri == null) throw new Exception("sin uri");
-            try (OutputStream os = cr.openOutputStream(uri)) {
-                b.compress(Bitmap.CompressFormat.PNG, 100, os);
-            }
-            v.clear();
-            v.put(MediaStore.Images.Media.IS_PENDING, 0);
-            cr.update(uri, v, null, null);
-            Toast.makeText(this, "Imagen guardada en Galería › EscanerDeTexto", Toast.LENGTH_LONG).show();
-            finish();
-        } catch (Exception e) {
-            Toast.makeText(this, "No se pudo guardar la imagen", Toast.LENGTH_LONG).show();
-        }
-    }
-
 }
