@@ -37,8 +37,14 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
             android:taskAffinity="com.escaner.texto.captura"
             android:excludeFromRecents="true"
+            android:exported="false" />
+
+        <!-- Lista de apps para «Recortar otra app» (enlace escaner://capture desde la app) -->
+        <activity
+            android:name=".AppPickerActivity"
+            android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"
+            android:excludeFromRecents="true"
             android:exported="true">
-            <!-- Botón «Recortar otra app» dentro de la app -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -82,6 +88,14 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
     </application>
+
+    <!-- Para listar las apps instaladas (Android 11+) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <!-- Permissions -->
 

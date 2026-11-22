@@ -26,23 +26,7 @@ public class CaptureActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Botón «Recortar otra app» dentro de la app (enlace escaner://capture):
-        // se relanza en su propia tarea y la app principal pasa a segundo plano,
-        // así queda visible la app que se estaba usando antes.
         Intent in = getIntent();
-        boolean fromAppButton = in != null && Intent.ACTION_VIEW.equals(in.getAction());
-        if (fromAppButton) fromApp = true;
-        // Android 13 o anterior: no hay selector de apps; se muestra la app anterior y se captura la pantalla
-        if (savedInstanceState == null && fromAppButton && Build.VERSION.SDK_INT < 34) {
-            startActivity(new Intent(this, CaptureActivity.class)
-                    .putExtra(EXTRA_FROM_APP, true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK));
-            MainActivity main = MainActivity.current;
-            finish();
-            overridePendingTransition(0, 0);
-            if (main != null) main.moveTaskToBack(true);
-            return;
-        }
         current = this;
         if (in != null && in.getBooleanExtra(EXTRA_FROM_APP, false)) fromApp = true;
         if (savedInstanceState != null) fromApp = savedInstanceState.getBoolean("fromApp", fromApp);
@@ -52,12 +36,8 @@ public class CaptureActivity extends Activity {
         }
         MediaProjectionManager mpm = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         Intent ask;
-        if (Build.VERSION.SDK_INT >= 34 && fromApp) {
-            // Botón de la app (Android 14+): Android deja elegir «Una sola app» y muestra
-            // la lista de apps abiertas para escoger cuál recortar
-            ask = mpm.createScreenCaptureIntent();
-        } else if (Build.VERSION.SDK_INT >= 34) {
-            // Botón de ajustes rápidos: pantalla completa (ya estás en la app que quieres)
+        if (Build.VERSION.SDK_INT >= 34) {
+            // Android 14+: pedir directamente la pantalla completa
             ask = mpm.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay());
         } else {
             ask = mpm.createScreenCaptureIntent();
